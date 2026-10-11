@@ -1,0 +1,133 @@
+name: ML Service CI
+
+on:
+
+  push:
+    branches:
+      - main
+      - "feature/**"
+      - "fix/**"
+
+  pull_request:
+    branches:
+      - main
+
+
+jobs:
+
+  test:
+
+    name: Run Python Tests
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+
+      - name: Show Python version
+        run: |
+          python --version
+
+
+      - name: Upgrade pip
+        run: |
+          python -m pip install --upgrade pip
+
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements-dev.txt
+
+
+      - name: Run Pytest
+        run: |
+          pytest -v
+
+
+  docker-build-and-smoke-test:
+
+    name: Build and Test Docker Container
+
+    needs:
+      - test
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+
+      - name: Show Docker version
+        run: |
+          docker --version
+
+
+      - name: Build Docker image
+        run: |
+          docker build             -t ml-ci-api:${{ github.sha }}             .
+
+
+      - name: Show Docker images
+        run: |
+          docker image ls
+
+
+      - name: Start container
+        run: |
+          docker run -d             --name ml-ci-container             -p 8000:8000             ml-ci-api:${{ github.sha }}
+
+
+      - name: Show running containers
+        run: |
+          docker ps
+
+
+      - name: Wait for API startup
+        run: |
+          sleep 5
+
+
+      - name: Smoke test health endpoint
+        run: |
+          python -c "
+          import urllib.request
+
+          response = urllib.request.urlopen(
+              'http://127.0.0.1:8000/health'
+          )
+
+          print(
+              'Status:',
+              response.status
+          )
+
+          print(
+              'Body:',
+              response.read().decode()
+          )
+
+          assert response.status == 200
+          "
+
+
+      - name: Show container logs
+        if: always()
+        run: |
+          docker logs ml-ci-container || true
+
+
+      - name: Remove test container
+        if: always()
+        run: |
+          docker rm -f ml-ci-container || true
