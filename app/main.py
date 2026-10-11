@@ -113,7 +113,7 @@ def root():
 
     return {
         "message":
-            "ML CI Demo API is running"
+            "ML CI Demo API is running through CI"
     }
 
 
